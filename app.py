@@ -115,6 +115,7 @@ if choice == "Login":
         if submit:
             df_input = pd.DataFrame([user_input])
             prediction = model.predict(df_input)[0]
+            st.write("🔍 Raw model prediction:", model.predict(df_input))
             result = get_health_tips(prediction)
 
             st.markdown(f"### 🧾 Prediction Result: **{result['label']}**")
