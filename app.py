@@ -2,22 +2,25 @@ import streamlit as st
 import pandas as pd
 import joblib
 
-# Load the trained model and feature columns
-model = joblib.load("stroke_model.pkl")        # Make sure this model outputs 0, 1, 2
-features = joblib.load("features.pkl")         # List of input features
+# Load model and features
+model = joblib.load("stroke_model.pkl")
+features = joblib.load("features.pkl")
 
-# Load custom CSS
+# Load CSS
 with open("style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# ---------------------- Utility Functions ---------------------- #
+# Initialize session
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = ""
 
-# Authenticate user credentials
+# User authentication
 def authenticate(username, password):
     users = pd.read_csv("users.csv")
-    return any((users['username'] == username) & (users['password'] == password))
+    return any((users["username"] == username) & (users["password"] == password))
 
-# Generate personalized tips based on risk level
+# Health tips function
 def get_health_tips(pred):
     if pred == 2:
         return {
@@ -59,44 +62,69 @@ def get_health_tips(pred):
             ]
         }
 
-# ---------------------- Streamlit UI ---------------------- #
+# Categorical label options
+label_map = {
+    "gender": ("Female", "Male", "Other"),
+    "ever_married": ("No", "Yes"),
+    "work_type": ("Private", "Self-employed", "Govt_job", "Children", "Never_worked"),
+    "Residence_type": ("Urban", "Rural"),
+    "smoking_status": ("Never smoked", "Formerly smoked", "Smokes", "Unknown"),
+    "hypertension": ("No", "Yes"),
+    "heart_disease": ("No", "Yes")
+}
 
+# UI
 st.title("🧠 Stroke Risk Prediction App")
 
 menu = ["Login", "Sign Up"]
 choice = st.sidebar.selectbox("Navigation", menu)
 
+# ------------------- LOGIN ------------------- #
 if choice == "Login":
-    st.subheader("🔐 User Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    if not st.session_state.logged_in:
+        st.subheader("🔐 User Login")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
 
-    if st.button("Login"):
-        if authenticate(username, password):
-            st.success(f"✅ Welcome {username}!")
-            st.markdown("---")
-            st.header("📋 Enter Your Health Details")
+        if st.button("Login"):
+            if authenticate(username, password):
+                st.success(f"✅ Welcome {username}!")
+                st.session_state.logged_in = True
+                st.session_state.username = username
+            else:
+                st.error("❌ Invalid username or password.")
 
+    if st.session_state.logged_in:
+        st.markdown("---")
+        st.header("📋 Enter Your Health Details")
+
+        with st.form("prediction_form"):
             user_input = {}
             for col in features:
                 if col in ["age", "avg_glucose_level", "bmi"]:
                     user_input[col] = st.number_input(f"{col.replace('_', ' ').capitalize()}", min_value=0.0)
+                elif col in label_map:
+                    options = label_map[col]
+                    selected = st.selectbox(f"{col.replace('_', ' ').capitalize()}", options)
+                    user_input[col] = options.index(selected)
                 else:
-                    user_input[col] = st.selectbox(f"{col.replace('_', ' ').capitalize()} (0 = No / 1 = Yes)", [0, 1])
+                    user_input[col] = st.selectbox(f"{col.replace('_', ' ').capitalize()} (0/1)", [0, 1])
 
-            if st.button("Predict Risk"):
-                df_input = pd.DataFrame([user_input])
-                prediction = model.predict(df_input)[0]
-                result = get_health_tips(prediction)
+            submit = st.form_submit_button("Predict Risk")
 
-                st.markdown(f"### 🧾 Prediction Result: **{result['label']}**")
-                st.markdown("#### 🩺 Personalized Healthcare Tips:")
-                for tip in result["tips"]:
-                    st.markdown(f"- {tip}")
+        if submit:
+            df_input = pd.DataFrame([user_input])
+            prediction = model.predict(df_input)[0]
+            result = get_health_tips(prediction)
 
-        else:
-            st.error("❌ Invalid username or password.")
+            st.markdown(f"### 🧾 Prediction Result: **{result['label']}**")
+            st.markdown("#### 🩺 Personalized Healthcare Tips:")
+            for tip in result["tips"]:
+                st.markdown(f"- {tip}")
 
+        st.button("Logout", on_click=lambda: st.session_state.update({"logged_in": False, "username": ""}))
+
+# ------------------- SIGN UP ------------------- #
 elif choice == "Sign Up":
     st.subheader("🆕 Create New Account")
     new_user = st.text_input("Choose a Username")
